@@ -144,10 +144,11 @@ export default function CardItem({ card, session, onUpdate }) {
   const getBankLogo = (cardName) => {
     if (!cardName) return null
     const name = cardName.toLowerCase()
-    if (name.includes('nu')) return '/Nu.jpg'
-    if (name.includes('banamex')) return '/banamex.png'
-    if (name.includes('bbva')) return '/bbva.png'
-    if (name.includes('mercado')) return '/mercadopago.jpg'
+    const base = import.meta.env.BASE_URL
+    if (name.includes('nu')) return `${base}Nu.jpg`
+    if (name.includes('banamex')) return `${base}banamex.png`
+    if (name.includes('bbva')) return `${base}bbva.png`
+    if (name.includes('mercado')) return `${base}mercadopago.jpg`
     return null
   }
 
