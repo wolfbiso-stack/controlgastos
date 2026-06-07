@@ -3,5 +3,9 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
-  base: '/controlgastos/'
+  base: '/controlgastos/',
+  build: {
+    outDir: 'docs',
+    emptyOutDir: true
+  }
 })
