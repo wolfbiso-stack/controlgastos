@@ -5,6 +5,11 @@ import { format, addMonths, parseISO } from 'date-fns'
 import PaymentModal from './PaymentModal'
 import { es } from 'date-fns/locale'
 
+import nuLogo from '../assets/Nu.jpg'
+import banamexLogo from '../assets/banamex.png'
+import bbvaLogo from '../assets/bbva.png'
+import mercadopagoLogo from '../assets/mercadopago.jpg'
+
 const formatCurrency = (amount) => {
   return new Intl.NumberFormat('es-MX', {
     style: 'currency',
@@ -144,11 +149,10 @@ export default function CardItem({ card, session, onUpdate }) {
   const getBankLogo = (cardName) => {
     if (!cardName) return null
     const name = cardName.toLowerCase()
-    const base = import.meta.env.BASE_URL
-    if (name.includes('nu')) return `${base}Nu.jpg`
-    if (name.includes('banamex')) return `${base}banamex.png`
-    if (name.includes('bbva')) return `${base}bbva.png`
-    if (name.includes('mercado')) return `${base}mercadopago.jpg`
+    if (name.includes('nu')) return nuLogo
+    if (name.includes('banamex')) return banamexLogo
+    if (name.includes('bbva')) return bbvaLogo
+    if (name.includes('mercado')) return mercadopagoLogo
     return null
   }
 
