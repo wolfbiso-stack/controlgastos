@@ -321,12 +321,16 @@ export default function CardItem({ card, session, onUpdate }) {
             {purchases.map(p => {
               const purchaseDateObj = parseISO(p.purchase_date)
               const endDate = p.is_msi && p.total_months ? addMonths(purchaseDateObj, p.total_months) : null
+              const isPaid = p.is_msi ? p.current_payment_number >= p.total_months : p.current_payment_number > 0
               
               return (
-                <div key={p.id} className="purchase-item">
+                <div key={p.id} className="purchase-item" style={{ opacity: isPaid ? 0.6 : 1, filter: isPaid ? 'grayscale(30%)' : 'none', transition: 'all 0.3s ease' }}>
                   <div className="flex-between">
-                    <strong style={{ color: 'white' }}>{p.description}</strong>
-                    <strong style={{ color: 'var(--primary)' }}>{formatCurrency(p.total_amount)}</strong>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <strong style={{ color: 'white', textDecoration: isPaid ? 'line-through' : 'none', opacity: isPaid ? 0.8 : 1 }}>{p.description}</strong>
+                      {isPaid && <span className="badge" style={{ background: 'var(--success)', color: 'white', padding: '2px 6px', fontSize: '0.7rem', border: 'none' }}>Pagado</span>}
+                    </div>
+                    <strong style={{ color: isPaid ? 'var(--text-secondary)' : 'var(--primary)' }}>{formatCurrency(p.total_amount)}</strong>
                   </div>
                   <div style={{ marginTop: '8px', fontSize: '0.85rem' }}>
                     <p>Fecha: {format(purchaseDateObj, 'dd MMM yyyy', { locale: es })}</p>
