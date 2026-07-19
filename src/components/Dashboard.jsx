@@ -86,6 +86,11 @@ export default function Dashboard({ session }) {
     }
   }
 
+  const refreshData = () => {
+    fetchCards()
+    fetchGlobalDebt()
+  }
+
   return (
     <div>
       <header className="flex-between" style={{ marginBottom: '16px' }}>
@@ -155,7 +160,7 @@ export default function Dashboard({ session }) {
             <p style={{ textAlign: 'center', marginTop: '40px' }}>No tienes tarjetas registradas aún.</p>
           ) : (
             cards.map(card => (
-              <CardItem key={card.id} card={card} session={session} onUpdate={fetchGlobalDebt} />
+              <CardItem key={card.id} card={card} session={session} onUpdate={refreshData} />
             ))
           )}
         </div>

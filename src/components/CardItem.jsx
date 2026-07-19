@@ -18,6 +18,15 @@ const formatCurrency = (amount) => {
 }
 
 export default function CardItem({ card, session, onUpdate }) {
+  const [currentCard, setCurrentCard] = useState(card)
+  const [isEditingCard, setIsEditingCard] = useState(false)
+  const [savingCard, setSavingCard] = useState(false)
+  const [cardForm, setCardForm] = useState({
+    card_name: card.card_name || '',
+    owner_name: card.owner_name || '',
+    payment_date: card.payment_date || ''
+  })
+
   const [purchases, setPurchases] = useState([])
   const [expanded, setExpanded] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -26,7 +35,48 @@ export default function CardItem({ card, session, onUpdate }) {
   const [editingPayment, setEditingPayment] = useState(null)
   const [showPaymentModal, setShowPaymentModal] = useState(false)
   const [paymentHistory, setPaymentHistory] = useState([])
-  
+
+  useEffect(() => {
+    setCurrentCard(card)
+    setCardForm({
+      card_name: card.card_name || '',
+      owner_name: card.owner_name || '',
+      payment_date: card.payment_date || ''
+    })
+  }, [card])
+
+  const handleSaveCard = async (e) => {
+    if (e) e.stopPropagation()
+    if (!cardForm.card_name.trim() || !cardForm.payment_date.trim()) {
+      alert('El nombre de la tarjeta y la fecha de pago son obligatorios.')
+      return
+    }
+    setSavingCard(true)
+    try {
+      const { data, error } = await supabase
+        .from('cards')
+        .update({
+          card_name: cardForm.card_name,
+          owner_name: cardForm.owner_name,
+          payment_date: cardForm.payment_date
+        })
+        .eq('id', currentCard.id)
+        .select()
+
+      if (error) throw error
+
+      if (data && data[0]) {
+        setCurrentCard(data[0])
+      }
+      setIsEditingCard(false)
+      onUpdate?.()
+    } catch (err) {
+      alert('Error al actualizar tarjeta: ' + err.message)
+    } finally {
+      setSavingCard(false)
+    }
+  }
+
   const [pForm, setPForm] = useState({
     description: '',
     total_amount: '',
@@ -46,7 +96,7 @@ export default function CardItem({ card, session, onUpdate }) {
     const { data } = await supabase
       .from('payment_history')
       .select('*')
-      .eq('card_id', card.id)
+      .eq('card_id', currentCard.id)
       .order('payment_date', { ascending: false })
     if (data) setPaymentHistory(data)
   }
@@ -56,7 +106,7 @@ export default function CardItem({ card, session, onUpdate }) {
     const { data, error } = await supabase
       .from('purchases')
       .select('*')
-      .eq('card_id', card.id)
+      .eq('card_id', currentCard.id)
       .order('created_at', { ascending: false })
       
     if (!error) setPurchases(data || [])
@@ -83,7 +133,7 @@ export default function CardItem({ card, session, onUpdate }) {
     }
 
     if (!editingPurchaseId) {
-      payload.card_id = card.id
+      payload.card_id = currentCard.id
       payload.current_payment_number = pForm.is_msi ? 1 : 0
     }
 
@@ -156,7 +206,7 @@ export default function CardItem({ card, session, onUpdate }) {
     return null
   }
 
-  const logoUrl = getBankLogo(card.card_name)
+  const logoUrl = getBankLogo(currentCard.card_name)
 
   const totalPurchasesAmount = purchases.reduce((acc, p) => acc + parseFloat(p.total_amount || 0), 0)
   const totalPaidAmount = purchases.reduce((acc, p) => {
@@ -167,17 +217,25 @@ export default function CardItem({ card, session, onUpdate }) {
   }, 0)
   const totalRemainingAmount = totalPurchasesAmount - totalPaidAmount
   const totalMonthlyPaymentAmount = purchases.reduce((acc, p) => {
-    if (p.is_msi && p.current_payment_number < p.total_months) {
-      return acc + parseFloat(p.monthly_payment || 0)
+    if (p.is_msi) {
+      if (p.current_payment_number < p.total_months) {
+        return acc + parseFloat(p.monthly_payment || 0)
+      }
+    } else {
+      if (!p.current_payment_number || p.current_payment_number === 0) {
+        return acc + parseFloat(p.total_amount || 0)
+      }
     }
     return acc
   }, 0)
 
   const handlePayClick = (e) => {
     e.stopPropagation()
-    const pending = purchases.filter(p => p.is_msi && p.current_payment_number < p.total_months)
+    const pending = purchases.filter(p => 
+      p.is_msi ? p.current_payment_number < p.total_months : (!p.current_payment_number || p.current_payment_number === 0)
+    )
     if (pending.length === 0) {
-      alert('No hay compras pendientes de pago a MSI.')
+      alert('No hay compras pendientes de pago.')
       return
     }
     setShowPaymentModal(true)
@@ -185,10 +243,10 @@ export default function CardItem({ card, session, onUpdate }) {
 
   const executePayment = async ({ date, evidenceUrl }) => {
     const updates = purchases
-      .filter(p => p.is_msi && p.current_payment_number < p.total_months)
+      .filter(p => p.is_msi ? p.current_payment_number < p.total_months : (!p.current_payment_number || p.current_payment_number === 0))
       .map(p => ({
         id: p.id,
-        current_payment_number: p.current_payment_number + 1
+        current_payment_number: (p.current_payment_number || 0) + 1
       }))
 
     setLoading(true)
@@ -207,7 +265,7 @@ export default function CardItem({ card, session, onUpdate }) {
 
     if (allSuccess) {
       const { data: historyData } = await supabase.from('payment_history').insert([{
-        card_id: card.id,
+        card_id: currentCard.id,
         amount_paid: totalMonthlyPaymentAmount,
         payment_date: date,
         evidence_url: evidenceUrl
@@ -232,20 +290,111 @@ export default function CardItem({ card, session, onUpdate }) {
     <div className="glass-card credit-card-design">
       <div className="card-content">
         <div className="flex-between" onClick={() => setExpanded(!expanded)} style={{ cursor: 'pointer' }}>
-          <div style={{ flex: 1 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              {logoUrl ? (
-                <img src={logoUrl} alt={card.card_name} style={{ width: '36px', height: '36px', objectFit: 'contain', borderRadius: '4px', background: 'white' }} />
-              ) : (
-                <CreditCard size={24} className="text-gradient" />
-              )}
-              <h3>{card.card_name}</h3>
+          {isEditingCard ? (
+            <div 
+              onClick={(e) => e.stopPropagation()} 
+              style={{ 
+                flex: 1, 
+                marginRight: '12px', 
+                background: 'rgba(0, 0, 0, 0.3)', 
+                padding: '12px', 
+                borderRadius: '8px',
+                border: '1px solid rgba(255, 255, 255, 0.1)'
+              }}
+            >
+              <div className="form-group" style={{ marginBottom: '8px' }}>
+                <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Nombre de Tarjeta</label>
+                <input
+                  type="text"
+                  required
+                  value={cardForm.card_name}
+                  onChange={(e) => setCardForm({ ...cardForm, card_name: e.target.value })}
+                  style={{ padding: '6px 10px', fontSize: '0.9rem' }}
+                  placeholder="Ej. Nu, Banamex"
+                />
+              </div>
+              <div className="form-group" style={{ marginBottom: '8px' }}>
+                <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Titular</label>
+                <input
+                  type="text"
+                  required
+                  value={cardForm.owner_name}
+                  onChange={(e) => setCardForm({ ...cardForm, owner_name: e.target.value })}
+                  style={{ padding: '6px 10px', fontSize: '0.9rem' }}
+                  placeholder="Ej. Juan Pérez"
+                />
+              </div>
+              <div className="form-group" style={{ marginBottom: '12px' }}>
+                <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Fecha de Pago</label>
+                <input
+                  type="text"
+                  required
+                  value={cardForm.payment_date}
+                  onChange={(e) => setCardForm({ ...cardForm, payment_date: e.target.value })}
+                  style={{ padding: '6px 10px', fontSize: '0.9rem' }}
+                  placeholder="Ej. Día 15 de cada mes"
+                />
+              </div>
+              <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                <button 
+                  type="button" 
+                  className="btn btn-secondary" 
+                  style={{ padding: '4px 12px', fontSize: '0.8rem' }}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setIsEditingCard(false)
+                    setCardForm({
+                      card_name: currentCard.card_name,
+                      owner_name: currentCard.owner_name,
+                      payment_date: currentCard.payment_date
+                    })
+                  }}
+                >
+                  Cancelar
+                </button>
+                <button 
+                  type="button" 
+                  className="btn" 
+                  style={{ padding: '4px 12px', fontSize: '0.8rem' }}
+                  onClick={handleSaveCard}
+                  disabled={savingCard}
+                >
+                  {savingCard ? 'Guardando...' : 'Guardar'}
+                </button>
+              </div>
             </div>
-            <p style={{ color: 'white', fontWeight: 500, marginTop: '4px' }}>{card.owner_name}</p>
-            <p style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '8px', fontSize: '0.8rem' }}>
-              <Calendar size={14} /> Pago: {card.payment_date}
-            </p>
-          </div>
+          ) : (
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {logoUrl ? (
+                  <img src={logoUrl} alt={currentCard.card_name} style={{ width: '36px', height: '36px', objectFit: 'contain', borderRadius: '4px', background: 'white' }} />
+                ) : (
+                  <CreditCard size={24} className="text-gradient" />
+                )}
+                <h3>{currentCard.card_name}</h3>
+                <button 
+                  className="btn-icon" 
+                  style={{ padding: '4px', marginLeft: '4px' }} 
+                  title="Editar datos de la tarjeta"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setCardForm({
+                      card_name: currentCard.card_name,
+                      owner_name: currentCard.owner_name,
+                      payment_date: currentCard.payment_date
+                    })
+                    setIsEditingCard(true)
+                  }}
+                >
+                  <Edit2 size={16} color="var(--text-secondary)" />
+                </button>
+              </div>
+              <p style={{ color: 'white', fontWeight: 500, marginTop: '4px' }}>{currentCard.owner_name}</p>
+              <p style={{ display: 'flex', alignItems: 'center', gap: '4px', marginTop: '8px', fontSize: '0.8rem' }}>
+                <Calendar size={14} /> Pago: {currentCard.payment_date}
+              </p>
+            </div>
+          )}
           <button 
             className="btn btn-danger" 
             style={{ padding: '8px 16px', fontSize: '0.9rem' }} 
@@ -269,7 +418,7 @@ export default function CardItem({ card, session, onUpdate }) {
                 <span style={{ color: 'var(--success)', fontWeight: 600 }}>{formatCurrency(totalPaidAmount)}</span>
               </div>
               <div className="flex-between" style={{ fontSize: '0.85rem', marginBottom: '4px' }}>
-                <span>Abono Mensual (MSI):</span>
+                <span>Abono Mensual:</span>
                 <span style={{ color: 'var(--primary)', fontWeight: 600 }}>{formatCurrency(totalMonthlyPaymentAmount)}</span>
               </div>
               <div className="flex-between" style={{ fontSize: '0.85rem', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '6px', marginTop: '4px' }}>
@@ -335,7 +484,7 @@ export default function CardItem({ card, session, onUpdate }) {
                   <div style={{ marginTop: '8px', fontSize: '0.85rem' }}>
                     <p>Fecha: {format(purchaseDateObj, 'dd MMM yyyy', { locale: es })}</p>
                     
-                    {p.is_msi && (
+                    {p.is_msi ? (
                       <div style={{ marginTop: '6px', background: 'rgba(139, 92, 246, 0.1)', padding: '8px', borderRadius: '6px' }}>
                         <div className="flex-between" style={{ marginBottom: '4px' }}>
                           <span className="badge">MSI</span>
@@ -367,6 +516,18 @@ export default function CardItem({ card, session, onUpdate }) {
                         <p style={{ marginTop: '4px', color: 'var(--success)', fontSize: '0.8rem' }}>
                           Terminas: {format(endDate, 'MMMM yyyy', { locale: es })}
                         </p>
+                      </div>
+                    ) : (
+                      <div style={{ marginTop: '6px', background: 'rgba(255, 255, 255, 0.03)', padding: '8px', borderRadius: '6px' }}>
+                        <div className="flex-between" style={{ alignItems: 'center' }}>
+                          <span className="badge" style={{ background: 'rgba(255,255,255,0.15)', color: 'white' }}>Pago Único</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontSize: '0.8rem', color: isPaid ? 'var(--success)' : 'var(--text-secondary)' }}>
+                              {isPaid ? 'Pagado' : 'Pendiente en abono del mes'}
+                            </span>
+                            <Edit2 size={14} style={{ cursor: 'pointer', color: 'var(--text-secondary)' }} title="Cambiar estado de pago" onClick={() => updateCurrentPayment(p.id, isPaid ? 0 : 1)} />
+                          </div>
+                        </div>
                       </div>
                     )}
                     
